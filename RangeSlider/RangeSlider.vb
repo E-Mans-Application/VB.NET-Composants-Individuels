@@ -211,7 +211,7 @@ Public Class RangeSlider
     Protected Overrides Sub OnPaint(e As PaintEventArgs)
         MyBase.OnPaint(e)
 
-        Dim barCenter As Integer = BarOffsetTop + BarHeight / 2
+        Dim barCenter As Integer = CInt(BarOffsetTop + BarHeight / 2)
 
         e.Graphics.DrawLine(New Pen(UnselectedRangeBarColor, UnselectedRangeBarThickness), New Point(HorizontalPadding, barCenter),
 New Point(e.ClipRectangle.Width - HorizontalPadding, barCenter))
@@ -219,26 +219,29 @@ New Point(e.ClipRectangle.Width - HorizontalPadding, barCenter))
         If Minimum >= Maximum Then Exit Sub
 
         Dim usableWidth As Integer = e.ClipRectangle.Width - 2 * HorizontalPadding
-        Dim selLeft As Integer = usableWidth * (RangeStart - Minimum) / (Maximum - Minimum) + HorizontalPadding
-        Dim selRight As Integer = usableWidth * (RangeEnd - Minimum) / (Maximum - Minimum) + HorizontalPadding
+        Dim selLeft As Integer = CInt(usableWidth * (RangeStart - Minimum) / (Maximum - Minimum) + HorizontalPadding)
+        Dim selRight As Integer = CInt(usableWidth * (RangeEnd - Minimum) / (Maximum - Minimum) + HorizontalPadding)
 
         e.Graphics.DrawLine(New Pen(SelectedRangeBarColor, SelectedRangeBarThickness), New Point(selLeft, barCenter),
 New Point(selRight, barCenter))
 
-        Dim height As Integer = BarHeight * 1.5
+        Dim height As Integer = CInt(BarHeight * 1.5)
         e.Graphics.FillEllipse(New SolidBrush(ThumbColor), selLeft - CInt(height / 2), barCenter - CInt(height / 2), height, height)
 
         e.Graphics.FillEllipse(New SolidBrush(ThumbColor), selRight - CInt(height / 2), barCenter - CInt(height / 2), height, height)
 
         TrackBarRenderer.DrawHorizontalTicks(e.Graphics,
-           New Rectangle(HorizontalPadding, BarOffsetTop + BarHeight + 5, usableWidth, 10), (Maximum - Minimum + 1) / TickStep, VisualStyles.EdgeStyle.Raised)
+           New Rectangle(HorizontalPadding, CInt(BarOffsetTop + BarHeight + 5), usableWidth, 10), CInt((Maximum - Minimum + 1) / TickStep + 1), VisualStyles.EdgeStyle.Raised)
     End Sub
 
     Private rangeStartScrolling As Boolean
     Private rangeEndScrolling As Boolean
+    Private translating As Boolean
+    Private suppressClick As Boolean
+    Private translateStart As Long
 
-    Private Function GetValueFromPoint(x As Integer) As Integer
-        Return (x - HorizontalPadding) / (Width - 2 * HorizontalPadding) * (Maximum - Minimum) + Minimum
+    Private Function GetValueFromPoint(x As Integer) As Long
+        Return CLng((x - HorizontalPadding) / (Width - 2 * HorizontalPadding) * (Maximum - Minimum) + Minimum)
     End Function
 
     Private Sub RangeSlider_MouseDown(sender As Object, e As MouseEventArgs) Handles Me.MouseDown
@@ -247,13 +250,15 @@ New Point(selRight, barCenter))
 
         If e.Button = MouseButtons.Left Then
             If e.Y >= BarOffsetTop And e.Y <= BarOffsetTop + BarHeight Then
-                Dim ptn As Integer = GetValueFromPoint(e.X)
+                Dim ptn As Long = GetValueFromPoint(e.X)
                 If ptn >= Minimum And ptn <= Maximum Then
+                    If ptn > RangeStart + 20 And ptn < RangeEnd - 20 Then
+                        translateStart = ptn
+                        translating = True
+                    End If
                     If RangeEnd > Minimum And (ptn <= RangeStart Or (ptn < RangeEnd And ptn - RangeStart < RangeEnd - ptn)) Then
-                        RangeStart = ptn
                         rangeStartScrolling = True
                     Else
-                        RangeEnd = ptn
                         rangeEndScrolling = True
                     End If
                 End If
@@ -262,8 +267,22 @@ New Point(selRight, barCenter))
     End Sub
 
     Private Sub RangeSlider_MouseMove(sender As Object, e As MouseEventArgs) Handles Me.MouseMove
-        Dim ptn As Integer = GetValueFromPoint(e.X)
-        If rangeStartScrolling Then
+        Dim ptn As Long = GetValueFromPoint(e.X)
+        If My.Computer.Keyboard.CtrlKeyDown Then ptn -= (ptn Mod 15)
+        If translating Then
+            Dim diff As Long = ptn - translateStart
+            If diff > 0 Then
+                diff = Math.Min(diff, Maximum - RangeEnd)
+            Else
+                diff = Math.Max(diff, Minimum - RangeStart)
+            End If
+            Dim selLength As Long = MinRangeLength
+            RangeStart += diff
+            RangeEnd += diff
+            translateStart = ptn
+
+            suppressClick = True
+        ElseIf rangeStartScrolling Then
             RangeStart = ptn
         ElseIf rangeEndScrolling Then
             RangeEnd = ptn
@@ -273,5 +292,20 @@ New Point(selRight, barCenter))
     Private Sub RangeSlider_MouseUp(sender As Object, e As MouseEventArgs) Handles Me.MouseUp
         rangeStartScrolling = False
         rangeEndScrolling = False
+        translating = False
+    End Sub
+
+    Private Sub RangeSlider_Click(sender As Object, e As MouseEventArgs) Handles Me.MouseClick
+        If suppressClick Then
+            suppressClick = False
+            Exit Sub
+        End If
+        Dim ptn As Long = GetValueFromPoint(e.X)
+        If My.Computer.Keyboard.CtrlKeyDown Then ptn -= (ptn Mod 15)
+        If rangeStartScrolling Then
+            RangeStart = ptn
+        ElseIf rangeEndScrolling Then
+            RangeEnd = ptn
+        End If
     End Sub
 End Class

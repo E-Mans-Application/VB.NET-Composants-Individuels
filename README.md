@@ -1,4 +1,4 @@
-# VB.NET-Composants-Individuels
+# VB.NET Composants Individuels
 
 Composants individuels en VB.NET.
 

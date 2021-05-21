@@ -268,7 +268,8 @@ New Point(selRight, barCenter))
 
     Private Sub RangeSlider_MouseMove(sender As Object, e As MouseEventArgs) Handles Me.MouseMove
         Dim ptn As Long = GetValueFromPoint(e.X)
-        If My.Computer.Keyboard.CtrlKeyDown Then ptn -= (ptn Mod 15)
+        Dim actualPos As Long = ptn
+        If My.Computer.Keyboard.CtrlKeyDown Then actualPos -= (actualPos Mod 15)
         If translating Then
             Dim diff As Long = ptn - translateStart
             If diff > 0 Then
@@ -276,16 +277,19 @@ New Point(selRight, barCenter))
             Else
                 diff = Math.Max(diff, Minimum - RangeStart)
             End If
+            If My.Computer.Keyboard.CtrlKeyDown Then diff -= (diff Mod 15)
+
             Dim selLength As Long = MinRangeLength
+
             RangeStart += diff
             RangeEnd += diff
-            translateStart = ptn
+            translateStart += diff
 
             suppressClick = True
         ElseIf rangeStartScrolling Then
-            RangeStart = ptn
+            RangeStart = actualPos
         ElseIf rangeEndScrolling Then
-            RangeEnd = ptn
+            RangeEnd = actualPos
         End If
     End Sub
 

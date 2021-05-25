@@ -43,6 +43,18 @@ Public Class RangeSlider
         End Set
     End Property
 
+    Public Sub SetLimits(minimum As Long, maximum As Long)
+        If minimum > maximum Then Throw New ArgumentException
+
+        If minimum < Me.Maximum Then
+            Me.Minimum = minimum
+            Me.Maximum = maximum
+        Else
+            Me.Maximum = maximum
+            Me.Minimum = minimum
+        End If
+    End Sub
+
     Private _rangeStart As Long = 0
 
     <DefaultValue(0)>
@@ -74,6 +86,25 @@ Public Class RangeSlider
     End Property
 
     Private _SelectedRangeBarThickness As Single = 1
+
+    Public Sub SetRange(rangeStart As Long, rangeEnd As Long)
+        rangeStart = Math.Max(rangeStart, Minimum)
+        rangeEnd = Math.Max(rangeEnd, rangeStart + MinRangeLength)
+        rangeEnd = Math.Min(rangeEnd, Maximum)
+        If rangeEnd < rangeStart + MinRangeLength Then
+            rangeStart = rangeEnd - MinRangeLength
+        End If
+        If rangeStart < Minimum Then
+            Exit Sub
+        End If
+
+        _rangeStart = rangeStart
+        _rangeEnd = rangeEnd
+
+        Invalidate()
+
+        RaiseEvent SelectedRangeChanged(Me, New EventArgs)
+    End Sub
 
     <DefaultValue(1)>
     Public Property SelectedRangeBarThickness As Single
@@ -208,6 +239,22 @@ Public Class RangeSlider
             RaiseEvent PropertyChanged(Me, New EventArgs)
         End Set
     End Property
+
+    Public Property FirstItemLegend As String
+    Public Property LastItemLegend As String
+
+    Private Property OtherLegends As IEnumerator(Of KeyValuePair(Of Long, String))
+
+    Public Sub SetOtherLegends(legends As List(Of KeyValuePair(Of Long, String)))
+        If legends Is Nothing Then
+            OtherLegends = Nothing
+            Exit Sub
+        End If
+        legends = New List(Of KeyValuePair(Of Long, String))(legends)
+        legends.Sort(Function(x, y) x.Key.CompareTo(y.Key))
+        OtherLegends = legends.GetEnumerator
+    End Sub
+
     Protected Overrides Sub OnPaint(e As PaintEventArgs)
         MyBase.OnPaint(e)
 
@@ -231,8 +278,46 @@ New Point(selRight, barCenter))
         e.Graphics.FillEllipse(New SolidBrush(ThumbColor), selRight - CInt(height / 2), barCenter - CInt(height / 2), height, height)
 
         TrackBarRenderer.DrawHorizontalTicks(e.Graphics,
-           New Rectangle(HorizontalPadding, CInt(BarOffsetTop + BarHeight + 5), usableWidth, 10), CInt((Maximum - Minimum + 1) / TickStep + 1), VisualStyles.EdgeStyle.Raised)
+           New Rectangle(HorizontalPadding, CInt(BarOffsetTop + BarHeight + 5), usableWidth, 10), CInt((Maximum - Minimum) / TickStep + 1), VisualStyles.EdgeStyle.Raised)
+
+        Dim LegendsTop As Integer = CInt(BarOffsetTop + BarHeight + 20)
+
+        Dim lastLegendPos As Integer = Me.Width + 1
+        Dim lastPos As Integer = -1
+        If Not String.IsNullOrEmpty(FirstItemLegend) Then
+            lastPos = DrawLegend(e.Graphics, Minimum, FirstItemLegend, LegendsTop, usableWidth, lastPos, lastLegendPos)(0)
+        End If
+
+        If Not String.IsNullOrEmpty(LastItemLegend) Then
+            Dim result As Integer() = DrawLegend(e.Graphics, Maximum, LastItemLegend, LegendsTop, usableWidth, lastPos, lastLegendPos)
+            If result(1) > 0 Then
+                lastLegendPos = result(0) - result(1)
+            End If
+        End If
+
+        If OtherLegends Is Nothing Then Exit Sub
+
+        OtherLegends.Reset()
+        While OtherLegends.MoveNext
+            lastPos = DrawLegend(e.Graphics, OtherLegends.Current.Key, OtherLegends.Current.Value, LegendsTop, usableWidth, lastPos, lastLegendPos)(0)
+        End While
     End Sub
+
+    Public Function DrawLegend(graphics As Graphics, index As Long, value As String, legendsTop As Integer, usableWidth As Integer, lastPos As Integer, lastLegendPos As Integer) As Integer()
+
+        If index < Minimum Or index > Maximum Then Return {lastPos, 0}
+
+        Dim textWidth As Integer = CInt(graphics.MeasureString(value, Font).Width)
+        Dim currentPos As Integer = CInt(usableWidth * ((index - Minimum) / (Maximum - Minimum)) + HorizontalPadding - textWidth / 2)
+        If currentPos < 0 Then currentPos = 0
+        If currentPos > Me.Width - textWidth Then currentPos = Me.Width - textWidth
+
+        If currentPos > lastPos And currentPos + textWidth < lastLegendPos Then
+            graphics.DrawString(value, Font, New SolidBrush(ForeColor), currentPos, legendsTop)
+            Return {currentPos + textWidth, textWidth}
+        End If
+        Return {lastPos, 0}
+    End Function
 
     Private rangeStartScrolling As Boolean
     Private rangeEndScrolling As Boolean
@@ -272,17 +357,14 @@ New Point(selRight, barCenter))
         If My.Computer.Keyboard.CtrlKeyDown Then actualPos -= (actualPos Mod 15)
         If translating Then
             Dim diff As Long = ptn - translateStart
+            If My.Computer.Keyboard.CtrlKeyDown Then diff -= ((RangeStart + diff) Mod 15)
             If diff > 0 Then
                 diff = Math.Min(diff, Maximum - RangeEnd)
             Else
                 diff = Math.Max(diff, Minimum - RangeStart)
             End If
-            If My.Computer.Keyboard.CtrlKeyDown Then diff -= (diff Mod 15)
 
-            Dim selLength As Long = MinRangeLength
-
-            RangeStart += diff
-            RangeEnd += diff
+            SetRange(RangeStart + diff, RangeEnd + diff)
             translateStart += diff
 
             suppressClick = True
@@ -311,5 +393,9 @@ New Point(selRight, barCenter))
         ElseIf rangeEndScrolling Then
             RangeEnd = ptn
         End If
+    End Sub
+
+    Private Sub RangeSlider_Resize(sender As Object, e As EventArgs) Handles Me.Resize
+        Invalidate()
     End Sub
 End Class
